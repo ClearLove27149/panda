@@ -19,7 +19,7 @@ def do_ioctl_init(arch):
 	CMD_BITS = 8
 	SIZE_BITS = 14 if arch != "ppc" else 13
 	DIR_BITS = 2 if arch != "ppc" else 3
-	
+
 	ffi.cdef("""
 	struct IoctlCmdBits {
 		uint8_t type_num:%d;
@@ -27,12 +27,12 @@ def do_ioctl_init(arch):
 		uint16_t arg_size:%d;
 		uint8_t direction:%d;
 	};
-	
+
 	union IoctlCmdUnion {
 		struct IoctlCmdBits bits;
 		uint32_t asUnsigned32;
 	};
-	
+
 	enum ioctl_direction {
 		IO = 0,
 		IOW = 1,
@@ -121,7 +121,7 @@ class IoctlFaker():
     Bin all returns into failures (needed forcing) and successes, store for later retrival/analysis.
     '''
 
-    def __init__(self, panda, use_osi_linux = False, ignore=[]):
+    def __init__(self, panda, use_osi_linux = False, log = false, ignore=[]):
         '''
         If set, ignores should be a list of tuples - (filename, cmd#) to be ignored
         '''
@@ -131,18 +131,20 @@ class IoctlFaker():
         self._panda.load_plugin("syscalls2")
         self.ignore = ignore
 
+        self._log = log
         if self.osi:
             self._panda.load_plugin("osi")
             self._panda.load_plugin("osi_linux")
 
-        self._logger = logging.getLogger('panda.hooking')
-        self._logger.setLevel(logging.DEBUG)
+        if self._log:
+            self._logger = logging.getLogger('panda.hooking')
+            self._logger.setLevel(logging.DEBUG)
 
         # Save runtime memory with sets instead of lists (no duplicates)
         self._fail_returns = set()
         self._success_returns = set()
 
-		
+
         # PPC (other arches use the default config)
         if self._panda.arch == "ppc":
             SIZE_BITS = 13
@@ -150,7 +152,7 @@ class IoctlFaker():
 
         # Force success returns for missing drivers/peripherals
         @self._panda.ppp("syscalls2", "on_sys_ioctl_return")
-        def on_sys_ioctl_return(cpu, pc, fd, cmd, arg):
+        def ioctl_faker_on_sys_ioctl_return(cpu, pc, fd, cmd, arg):
 
             ioctl = Ioctl(self._panda, cpu, fd, cmd, arg, self.osi)
             ioctl.set_ret_code(self._panda.from_unsigned_guest(cpu.env_ptr.regs[0]))
@@ -163,6 +165,7 @@ class IoctlFaker():
                         self._logger.warning("Forcing success return for data-containing {}".format(ioctl))
                     else:
                         self._logger.info("Forcing success return for data-less {}".format(ioctl))
+
             else:
                 self._success_returns.add(ioctl)
 
